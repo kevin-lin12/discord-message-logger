@@ -1,48 +1,68 @@
-import { WebhookClient } from "discord.js-selfbot-v13"
+import { WebhookClient } from "discord.js-selfbot-v13";
 
 export default (client, account) => {
-    client.on('messageCreate', async(message) => {
-        const hook = new WebhookClient({url: account.webhook})
+  let routes = [];
 
-        if(!account.channels.includes(message.channel.id)) {
-            return
-        }
+  if (Array.isArray(account.routes)) {
+    routes = account.routes;
+  } else if (account.webhook && Array.isArray(account.channels)) {
+    routes = [
+      {
+        channels: account.channels,
+        webhook: account.webhook,
+      },
+    ];
+  } else {
+    console.error("Invalid account config:", account);
+    return;
+  }
 
-        let attachments = []
-        let embeds = []
+  const normalizedRoutes = routes.map((route) => ({
+    channels: route.channels,
+    hook: new WebhookClient({ url: route.webhook }),
+  }));
 
-        if(message.attachments.size > 0) {
-            message.attachments.forEach(attach => {
-                attachments.push(attach.url)
-            })
-        }
+  client.on("messageCreate", async (message) => {
+    for (const route of normalizedRoutes) {
+      if (!route.channels.includes(message.channel.id)) {
+        continue;
+      }
 
-        if(message.embeds.length > 0) {
-            embeds = message.embeds
-        }
+      const attachments = [];
+      let embeds = [];
 
-        let {content} = message
+      if (message.attachments.size > 0) {
+        message.attachments.forEach((attach) => {
+          attachments.push(attach.url);
+        });
+      }
 
-        let hook_obj = {
+      if (message.embeds.length > 0) {
+        embeds = message.embeds;
+      }
 
-        }
+      const hookObj = {};
 
-        if(content) {
-            hook_obj.content = content
-        }
+      if (message.content) {
+        hookObj.content = message.content;
+      }
 
-        if(attachments.length > 0) {
-            hook_obj.files = attachments
-        }
+      if (attachments.length > 0) {
+        hookObj.files = attachments;
+      }
 
-        if(embeds.length > 0) {
-            hook_obj.embeds = embeds
-        }
+      if (embeds.length > 0) {
+        hookObj.embeds = embeds;
+      }
 
-        hook_obj.username = message.author.username
-        hook_obj.avatarURL = message.author.avatarURL()
+      hookObj.username = message.author.username;
+      hookObj.avatarURL = message.author.avatarURL();
 
-        hook.send(hook_obj)
-
-    })
-}
+      try {
+        await route.hook.send(hookObj);
+      } catch (err) {
+        console.error("Webhook send failed:", err);
+      }
+    }
+  });
+};
